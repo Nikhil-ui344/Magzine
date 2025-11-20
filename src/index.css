@@ -1,0 +1,119 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@100..900&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(#5a47ce, #232323 80%);
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.outline-text {
+  -webkit-text-stroke: 1px white;
+}
+
+/* Responsive text sizes for different devices */
+@media (max-width: 640px) {
+  .text-10xl {
+    font-size: 3.5rem;
+    line-height: 1;
+  }
+  
+  .text-12xl {
+    font-size: 4rem;
+    line-height: 1;
+  }
+  
+  .text-13xl {
+    font-size: 4.5rem;
+    line-height: 1;
+  }
+  
+  .text-8xl {
+    font-size: 3rem;
+    line-height: 1;
+  }
+  
+  .text-9xl {
+    font-size: 3.25rem;
+    line-height: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .text-10xl {
+    font-size: 2.5rem;
+    line-height: 1;
+  }
+  
+  .text-12xl {
+    font-size: 3rem;
+    line-height: 1;
+  }
+  
+  .text-13xl {
+    font-size: 3.5rem;
+    line-height: 1;
+  }
+  
+  .text-8xl {
+    font-size: 2rem;
+    line-height: 1;
+  }
+  
+  .text-9xl {
+    font-size: 2.25rem;
+    line-height: 1;
+  }
+}
+
+/* Adjust scrolling text for mobile */
+@media (max-width: 768px) {
+  .animate-horizontal-scroll,
+  .animate-horizontal-scroll-2 {
+    gap: 2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .animate-horizontal-scroll,
+  .animate-horizontal-scroll-2 {
+    gap: 1rem;
+  }
+}
+
+/* Responsive padding and margins */
+@media (max-width: 640px) {
+  .p-10 {
+    padding: 1.5rem;
+  }
+  
+  .px-8 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  .py-8 {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
+/* Responsive max-height for images */
+@media (max-width: 768px) {
+  .max-h-\[60vh\] {
+    max-height: 70vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .max-h-\[60vh\] {
+    max-height: 60vh;
+  }
+}
