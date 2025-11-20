@@ -505,14 +505,16 @@ export const UI = () => {
           <div className="fixed inset-0 flex items-center -rotate-2 select-none opacity-20">
             <div className="relative">
               <div className="bg-white/0 animate-horizontal-scroll flex items-center gap-4 md:gap-8 w-max px-4 md:px-8">
-                <h1 className="shrink-0 text-white text-4xl md:text-6xl lg:text-10xl font-black">Get Ready for Freshers Day</h1>
+                <h1 className="shrink-0 text-white text-4xl md:text-6xl lg:text-10xl font-black">Welcome to anexsa</h1>
                 <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-8xl italic font-light">Get Ready for Freshers Day</h2>
-                <h2 className="shrink-0 text-white text-5xl md:text-7xl lg:text-12xl font-bold">Get Ready for Freshers Day</h2>
+                <h2 className="shrink-0 text-white text-5xl md:text-7xl lg:text-12xl font-bold">Welcome to anexsa</h2>
+                <h1 className="shrink-0 text-white text-4xl md:text-6xl lg:text-10xl font-black">Get Ready for Freshers Day</h1>
               </div>
               <div className="absolute top-0 left-0 bg-white/0 animate-horizontal-scroll-2 flex items-center gap-4 md:gap-8 px-4 md:px-8 w-max">
                 <h1 className="shrink-0 text-white text-4xl md:text-6xl lg:text-10xl font-black">Get Ready for Freshers Day</h1>
-                <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-8xl italic font-light">Get Ready for Freshers Day</h2>
+                <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-8xl italic font-light">Welcome to anexsa</h2>
                 <h2 className="shrink-0 text-white text-5xl md:text-7xl lg:text-12xl font-bold">Get Ready for Freshers Day</h2>
+                <h1 className="shrink-0 text-white text-4xl md:text-6xl lg:text-10xl font-black">Welcome to anexsa</h1>
               </div>
             </div>
           </div>
@@ -692,25 +694,25 @@ export const UI = () => {
             <div className="relative">
               <div className="bg-white/0 animate-horizontal-scroll flex items-center gap-4 md:gap-8 w-max px-4 md:px-8">
                 <h1 className="shrink-0 text-white text-3xl md:text-5xl lg:text-10xl font-black ">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h1>
                 <h2 className="shrink-0 text-white text-2xl md:text-4xl lg:text-8xl italic font-light">
                   Get Ready for Freshers Day
                 </h2>
                 <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-12xl font-bold">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h2>
                 <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-12xl font-bold italic outline-text">
                   Get Ready for Freshers Day
                 </h2>
                 <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-9xl font-medium">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h2>
                 <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-9xl font-extralight italic">
                   Get Ready for Freshers Day
                 </h2>
                 <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-13xl font-bold">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h2>
                 <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold outline-text italic">
                   Get Ready for Freshers Day
@@ -721,25 +723,25 @@ export const UI = () => {
                   Get Ready for Freshers Day
                 </h1>
                 <h2 className="shrink-0 text-white text-2xl md:text-4xl lg:text-8xl italic font-light">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h2>
                 <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-12xl font-bold">
                   Get Ready for Freshers Day
                 </h2>
                 <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-12xl font-bold italic outline-text">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h2>
                 <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-9xl font-medium">
                   Get Ready for Freshers Day
                 </h2>
                 <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-9xl font-extralight italic">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h2>
                 <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-13xl font-bold">
                   Get Ready for Freshers Day
                 </h2>
                 <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold outline-text italic">
-                  Get Ready for Freshers Day
+                  Welcome to anexsa
                 </h2>
               </div>
             </div>
@@ -894,25 +896,25 @@ export const UI = () => {
               Get Ready for Freshers Day
             </h1>
             <h2 className="shrink-0 text-white text-2xl md:text-4xl lg:text-8xl italic font-light">
-              Get Ready for Freshers Day
+              Welcome to ANEXSA
             </h2>
             <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-12xl font-bold">
               Get Ready for Freshers Day
             </h2>
             <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-12xl font-bold italic outline-text">
-              Get Ready for Freshers Day
+              Welcome to ANEXSA
             </h2>
             <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-9xl font-medium">
               Get Ready for Freshers Day
             </h2>
             <h2 className="shrink-0 text-white text-3xl md:text-5xl lg:text-9xl font-extralight italic">
-              Get Ready for Freshers Day
+              Welcome to ANEXSA
             </h2>
             <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-13xl font-bold">
               Get Ready for Freshers Day
             </h2>
             <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold outline-text italic">
-              Get Ready for Freshers Day
+              Welcome to ANEXSA
             </h2>
           </div>
           <div className="absolute top-0 left-0 bg-white/0 animate-horizontal-scroll-2 flex items-center gap-4 md:gap-8 px-4 md:px-8 w-max">
@@ -923,7 +925,7 @@ export const UI = () => {
               Get Ready for Freshers Day
             </h2>
             <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-12xl font-bold">
-              Get Ready for Freshers Day
+             AI CE Crew
             </h2>
             <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-12xl font-bold italic outline-text">
               Get Ready for Freshers Day
