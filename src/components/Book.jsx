@@ -17,7 +17,50 @@ import {
   Vector3,
 } from "three";
 import { degToRad } from "three/src/math/MathUtils.js";
-import { pageAtom, pages, selectedPageAtom, currentViewAtom } from "./UI";
+import { pageAtom, selectedPageAtom, currentViewAtom } from "./UI";
+
+// Helper function to get dynamic pages - now returns fresh data each time
+const getDynamicPages = () => {
+  // Get base pictures
+  const basePictures = [
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19","20"
+  ];
+  
+  // Get admin images
+  const adminImages = localStorage.getItem('admin_uploaded_images');
+  const pictures = adminImages ? [...basePictures, ...JSON.parse(adminImages).map(img => img.id)] : basePictures;
+  
+  // Generate pages
+  const generatedPages = [
+    {
+      front: "book-cover",
+      back: "book-back",
+    },
+  ];
+
+  for (let i = 1; i < pictures.length - 1; i += 2) {
+    if (i + 1 < pictures.length) {
+      generatedPages.push({
+        front: pictures[i],
+        back: pictures[i + 1],
+      });
+    }
+  }
+
+  if (pictures.length % 2 === 0) {
+    generatedPages.push({
+      front: pictures[pictures.length - 1],
+      back: "book-back",
+    });
+  }
+
+  generatedPages.push({
+    front: "book-back",
+    back: "book-back",
+  });
+
+  return generatedPages;
+};
 
 // Helper function to check if a texture exists
 const checkTextureExists = (url) => {
@@ -121,22 +164,25 @@ const getPreloadTexturePath = (imageName) => {
   return `/textures/${imageName}.jpg`;
 };
 
-pages.forEach((page) => {
-  useTexture.preload(getPreloadTexturePath(page.front));
-  useTexture.preload(getPreloadTexturePath(page.back));
-});
-
-const Page = ({ number, front, back, page, opened, bookClosed, ...props }) => {
+const Page = ({ number, front, back, page, opened, bookClosed, totalPages, ...props }) => {
   // Load textures - for covers use book-cover.png, for inner pages use their textures
-  // Handle different image extensions (.jpg vs .jpeg)
+  // Handle different image extensions (.jpg vs .jpeg) and admin uploaded images
   const getTexturePath = (imageName) => {
-    // Special cases for images that might have different extensions
-    // For now, we'll assume all new images use .jpg extension
-    // If you have specific images with .jpeg extension, add them here
+    // Check if it's an admin uploaded image
+    const adminImages = localStorage.getItem('admin_uploaded_images');
+    if (adminImages) {
+      const parsedImages = JSON.parse(adminImages);
+      const adminImage = parsedImages.find(img => img.id === imageName);
+      if (adminImage) {
+        return adminImage.dataUrl; // Use the base64 data URL for admin images
+      }
+    }
+    
+    // Default to regular texture path
     return `/textures/${imageName}.jpg`;
   };
 
-  const textures = (number === 0 || number === pages.length - 1) ? [
+  const textures = (number === 0 || number === totalPages - 1) ? [
     `/textures/book-cover.png`,
     `/textures/book-cover.png`,
   ] : [
@@ -173,7 +219,7 @@ const Page = ({ number, front, back, page, opened, bookClosed, ...props }) => {
       new MeshStandardMaterial({
         color: whiteColor,
         map: picture,
-        roughness: number === 0 || number === pages.length - 1 ? 0.15 : 0.1,
+        roughness: number === 0 || number === totalPages - 1 ? 0.15 : 0.1,
         metalness: 0,
         emissive: emissiveColor,
         emissiveIntensity: 0,
@@ -181,7 +227,7 @@ const Page = ({ number, front, back, page, opened, bookClosed, ...props }) => {
       new MeshStandardMaterial({
         color: whiteColor,
         map: picture2,
-        roughness: number === 0 || number === pages.length - 1 ? 0.15 : 0.1,
+        roughness: number === 0 || number === totalPages - 1 ? 0.15 : 0.1,
         metalness: 0,
         emissive: emissiveColor,
         emissiveIntensity: 0,
@@ -304,7 +350,7 @@ const Page = ({ number, front, back, page, opened, bookClosed, ...props }) => {
     e.stopPropagation();
     
     // Double click - open full page view (only for inner pages)
-    if (number !== 0 && number !== pages.length - 1) {
+    if (number !== 0 && number !== totalPages - 1) {
       const pageToShow = opened ? back : front;
       setSelectedPage(pageToShow);
     }
@@ -338,6 +384,48 @@ const Page = ({ number, front, back, page, opened, bookClosed, ...props }) => {
 export const Book = ({ ...props }) => {
   const [page] = useAtom(pageAtom);
   const [delayedPage, setDelayedPage] = useState(page);
+  const [pages, setPages] = useState(getDynamicPages());
+
+  // Update pages when admin content changes
+  useEffect(() => {
+    const updatePages = () => {
+      const newPages = getDynamicPages();
+      setPages(newPages);
+      
+      // Preload textures for the new pages
+      newPages.forEach((pageData) => {
+        useTexture.preload(getPreloadTexturePath(pageData.front));
+        useTexture.preload(getPreloadTexturePath(pageData.back));
+      });
+    };
+
+    // Update pages on mount
+    updatePages();
+
+    // Listen for storage changes (when admin uploads new images)
+    const handleStorageChange = (e) => {
+      if (e.key === 'admin_uploaded_images' || e.key === 'admin_image_content') {
+        updatePages();
+      }
+    };
+
+    // Listen for custom admin events
+    const handleAdminUpdate = () => {
+      updatePages();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('admin-content-updated', handleAdminUpdate);
+    
+    // Also check for changes periodically (for same-tab updates)
+    const interval = setInterval(updatePages, 3000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('admin-content-updated', handleAdminUpdate);
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     let timeout;
@@ -374,6 +462,7 @@ export const Book = ({ ...props }) => {
           key={index}
           page={delayedPage}
           number={index}
+          totalPages={pages.length}
           opened={delayedPage > index}
           bookClosed={delayedPage === 0 || delayedPage === pages.length}
           {...pageData}

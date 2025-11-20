@@ -2,9 +2,20 @@ import { atom, useAtom } from "jotai";
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 
-const pictures = [
-  "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"
+// Base pictures - can be extended dynamically via admin
+const basePictures = [
+"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19","20"
 ];
+
+// Dynamic pictures loading function
+const getDynamicPictures = () => {
+  const adminImages = localStorage.getItem('admin_uploaded_images');
+  if (adminImages) {
+    const parsedImages = JSON.parse(adminImages);
+    return [...basePictures, ...parsedImages.map(img => img.id)];
+  }
+  return basePictures;
+};
 
 export const pageAtom = atom(0);
 export const selectedPageAtom = atom(null);
@@ -12,30 +23,64 @@ export const currentViewAtom = atom("home");
 export const isLoggedInAtom = atom(false);
 export const userInfoAtom = atom({ name: "", usn: "", branch: "" });
 export const hasDownloadedTicketAtom = atom(false);
-export const pages = [
-  {
-    front: "book-cover",
-    back: "book-back", // Standard cover
-  },
-];
-// Create pages with images on both front and back
-// Page 1 (odd): image 2.jpg on front, image 3.jpg on back
-// Page 2 (even): image 4.jpg on front, image 5.jpg on back
-// Page 3 (odd): image 6.jpg on front, image 7.jpg on back
-// And so on...
-for (let i = 1; i < pictures.length - 1; i += 2) {
-  if (i + 1 < pictures.length) {
-    pages.push({
-      front: pictures[i],   // 2, 4, 6, 8, 10, 12
-      back: pictures[i + 1], // 3, 5, 7, 9, 11, 13
+// Dynamic pages generation function
+const generatePages = () => {
+  const pictures = getDynamicPictures();
+  const generatedPages = [
+    {
+      front: "book-cover",
+      back: "book-back", // Standard cover
+    },
+  ];
+
+  // Create pages with images on both front and back using a dynamic loop
+  for (let i = 1; i < pictures.length - 1; i += 2) {
+    if (i + 1 < pictures.length) {
+      generatedPages.push({
+        front: pictures[i],   // Right side
+        back: pictures[i + 1], // Left side
+      });
+    }
+  }
+
+  // Handle the last image if there's an odd number of images
+  if (pictures.length % 2 === 0) {
+    // If even number of images, last image goes on front with book-back on back
+    generatedPages.push({
+      front: pictures[pictures.length - 1],
+      back: "book-back",
     });
   }
-}
-// Last page: image 14 on front, back cover on back
-pages.push({
-  front: pictures[pictures.length - 1], // 14
-  back: "book-back",
-});
+
+  // Final back cover page
+  generatedPages.push({
+    front: "book-back",
+    back: "book-back",
+  });
+
+  return generatedPages;
+};
+
+// Dynamic content loading function
+const getDynamicContent = () => {
+  const adminContent = localStorage.getItem('admin_image_content');
+  if (adminContent) {
+    return JSON.parse(adminContent);
+  }
+  return {};
+};
+
+// Dynamic page content function that merges static and dynamic content
+const getPageContent = (pageId) => {
+  // First check for dynamic content from admin
+  const dynamicContent = getDynamicContent();
+  if (dynamicContent[pageId]) {
+    return dynamicContent[pageId];
+  }
+  
+  // Fall back to static content
+  return pageContentMap[pageId] ?? defaultPageContent;
+};
 
 const defaultPageContent = {
   title: "Captured Moments",
@@ -65,10 +110,10 @@ const pageContentMap = {
   },
   "1": {
     title: "AIML Jersey Launch",
-    eventName: "Sports Day",
+    eventName: "Sports Day Preparation",
     lines: [
-      "Fresh AIML jerseys revealed ahead of Sports Day celebrations.",
-      "Led by the AIML HOD, the launch charged up the teams.",
+      "The AIML department unveils their new sports jerseys with pride.",
+      "Department head leads the ceremonial launch, energizing the sports teams.",
     ],
   },
   "2": {
@@ -97,10 +142,10 @@ const pageContentMap = {
   },
   "5": {
     title: "ANEXSA Title Reveal",
-    eventName: "Freshers Day Launch",
+    eventName: "Freshers Day Campaign Launch",
     lines: [
-      "ANEXSA presents the Freshers Day title reveal poster.",
-      "Excitement builds as the campaign is unveiled to the campus.",
+      "ANEXSA unveils the official Freshers Day title with great fanfare.",
+      "The anticipation builds as the community sees the grand theme revealed.",
     ],
   },
   "6": {
@@ -128,11 +173,11 @@ const pageContentMap = {
     ],
   },
   "9": {
-    title: "Mini AI Car Reveal",
-    eventName: "Freshers Day Launch",
+    title: "Innovative Title Reveal",
+    eventName: "Mini AI Car Demonstration",
     lines: [
-      "Innovative mini remote-control car used to introduce the Freshers Day title.",
-      "Technology and creativity merge for a memorable reveal moment.",
+      "A remote-controlled mini car adds a tech twist to the title reveal.",
+      "Innovation meets tradition in this creative announcement approach.",
     ],
   },
   "10": {
@@ -160,11 +205,11 @@ const pageContentMap = {
     ],
   },
   "13": {
-    title: "Hacknex Highlights",
-    eventName: "COGNEX Club",
+    title: "Hacknex Innovation Hub",
+    eventName: "COGNEX Club Workshop",
     lines: [
-      "Cognex Club's Hacknex program brings innovators under one roof.",
-      "Hands-on workshops encouraged quick prototyping and teamwork.",
+      "Students collaborate and innovate during the intensive Hacknex program.",
+      "Hands-on learning and rapid prototyping bring ideas to life.",
     ],
   },
   "14": {
@@ -175,14 +220,70 @@ const pageContentMap = {
       "Their guidance continues to elevate AIML technical initiatives.",
     ],
   },
-};
+  "15": {
+    title: "Anvaya Launch Celebration",
+    eventName: "Title Reveal Event",
+    lines: [
+      "The grand unveiling of Anvaya brings excitement and anticipation.",
+      "Students and faculty gather to witness this momentous launch.",
+    ],
+  },
+  "16": {
+    title: "Lynx Freshers Welcome",
+    eventName: "Ice Breaking Session",
+    lines: [
+      "New students bond and connect during the engaging ice-breaking activities.",
+      "Building friendships and creating lasting memories from day one.",
+    ],
+  },
+  "17": {
+    title: "AIML Throwball Champions",
+    eventName: "Sports Victory Celebration",
+    lines: [
+      "The AIML throwball team celebrates their championship victory.",
+      "Teamwork, dedication, and skill led to this triumphant moment.",
+    ],
+  },
+  "18": {
+    title: "Overall Champions Glory",
+    eventName: "AIML & CE Sports Triumph",
+    lines: [
+      "The combined strength of AIML and CE secures the overall championship.",
+      "A moment of pride as both departments celebrate their collective success.",
+    ],
+  },
+  "19": {
+    title: "Mini Project Excellence",
+    eventName: "KALAKAR 2024-2025 Awards",
+    lines: [
+      "Outstanding students receive recognition for their innovative mini projects.",
+      "Academic excellence and creativity are celebrated and honored.",
+    ],
+  },
+   "20":  {
+    title: "AI&ML Title Reveal Crew",
+    eventName: "Freshers Day Launch",
+    lines: [
+      "Third-year AI&ML students gather post-title reveal for a commemorative photo.",
+      "Their support ensured a seamless and spectacular launch presentation.",
+    ],
+  },
+  "21": {
+    title:"Proud of AI&ML",
+    eventName: "MIT Hackthon",
+    lines: [
+      "AI&ML team showcases their innovative projects at the MIT Hackthon and managed to placed top 5.",
+      "Collaboration and creativity drive their success in the competition.",
+    ],
+  },
 
-const getPageContent = (pageId) => pageContentMap[pageId] ?? defaultPageContent;
+};
 
 export const UI = () => {
   const [page, setPage] = useAtom(pageAtom);
   const [selectedPage, setSelectedPage] = useAtom(selectedPageAtom);
   const [currentView, setCurrentView] = useAtom(currentViewAtom);
+  const [pages, setPages] = useState([]);
   const [foodPreference, setFoodPreference] = useState("veg");
   const [isLoggedIn, setIsLoggedIn] = useAtom(isLoggedInAtom);
   const [userInfo, setUserInfo] = useAtom(userInfoAtom);
@@ -192,6 +293,36 @@ export const UI = () => {
   const [loginName, setLoginName] = useState("");
   const [loginUSN, setLoginUSN] = useState("");
   const [loginBranch, setLoginBranch] = useState("");
+
+  // Load dynamic pages on component mount and when admin content changes
+  useEffect(() => {
+    const loadPages = () => {
+      const dynamicPages = generatePages();
+      setPages(dynamicPages);
+    };
+    
+    loadPages();
+    
+    // Listen for storage changes (when admin adds new content)
+    const handleStorageChange = (e) => {
+      if (e.key === 'admin_uploaded_images' || e.key === 'admin_image_content') {
+        loadPages();
+      }
+    };
+
+    // Listen for custom admin events
+    const handleAdminUpdate = () => {
+      loadPages();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('admin-content-updated', handleAdminUpdate);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('admin-content-updated', handleAdminUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     const audio = new Audio("/audios/page-flip-01a.mp3");
@@ -812,6 +943,7 @@ export const UI = () => {
           </div>
         </div>
       </div>
+      
       </>
       )}
     </>
