@@ -10,7 +10,7 @@ const Auth = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (password === '2025adminanesxa') {
+    if (password === '2025adminanexsa') {
       setIsAuthenticated(true);
       setError('');
     } else {
