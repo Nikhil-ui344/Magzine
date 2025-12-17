@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
+import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage } from '../firebase';
 
 const Admin = () => {
   const [uploadedImages, setUploadedImages] = useState([]);
   const [imageContent, setImageContent] = useState({});
   const [newImageFile, setNewImageFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [firebaseStatus, setFirebaseStatus] = useState('checking'); // checking, connected, error
   const [newImageData, setNewImageData] = useState({
     title: "",
     eventName: "",
@@ -11,67 +16,229 @@ const Admin = () => {
     line2: ""
   });
 
-  // Load existing data from localStorage
+  // Load existing data from Firebase and localStorage
   useEffect(() => {
-    const savedImages = localStorage.getItem('admin_uploaded_images');
-    const savedContent = localStorage.getItem('admin_image_content');
-    
-    if (savedImages) {
-      setUploadedImages(JSON.parse(savedImages));
-    }
-    if (savedContent) {
-      setImageContent(JSON.parse(savedContent));
-    }
+    loadImagesFromFirebase();
   }, []);
 
-  const handleImageUpload = () => {
+  const testFirebaseConnection = async () => {
+    try {
+      console.log("🔥 Testing Firebase connection...");
+      setFirebaseStatus('checking');
+      
+      // Test Firestore read
+      const querySnapshot = await getDocs(collection(db, "magazine-images"));
+      console.log("✅ Firestore connection successful");
+      
+      // Test Storage by trying to create a reference
+      const testRef = ref(storage, 'test-connection');
+      console.log("✅ Storage connection successful");
+      
+      setFirebaseStatus('connected');
+      alert("🎉 Firebase connection successful!\n\nYou can now upload images that will appear on the live website.");
+      
+    } catch (error) {
+      console.error("❌ Firebase connection failed:", error);
+      setFirebaseStatus('error');
+      alert("❌ Firebase connection failed:\n\n" + error.message + "\n\nPlease check your Firebase Storage rules.");
+    }
+  };
+
+  const loadImagesFromFirebase = async () => {
+    try {
+      console.log("🔥 Loading images from Firebase...");
+      setFirebaseStatus('checking');
+      
+      const querySnapshot = await getDocs(collection(db, "magazine-images"));
+      const images = [];
+      const content = {};
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        images.push({
+          id: doc.id,
+          ...data
+        });
+        content[doc.id] = {
+          title: data.title,
+          eventName: data.eventName,
+          lines: data.lines
+        };
+      });
+      
+      setUploadedImages(images);
+      setImageContent(content);
+      setFirebaseStatus('connected');
+      console.log("✅ Loaded", images.length, "images from Firebase");
+      
+      // Also save to localStorage as backup
+      localStorage.setItem('admin_uploaded_images', JSON.stringify(images));
+      localStorage.setItem('admin_image_content', JSON.stringify(content));
+      
+    } catch (error) {
+      console.error("❌ Firebase connection error:", error);
+      setFirebaseStatus('error');
+      
+      // Fallback to localStorage
+      console.log("📦 Falling back to localStorage...");
+      const savedImages = localStorage.getItem('admin_uploaded_images');
+      const savedContent = localStorage.getItem('admin_image_content');
+      
+      if (savedImages) {
+        setUploadedImages(JSON.parse(savedImages));
+        console.log("📦 Loaded from localStorage backup");
+      }
+      if (savedContent) {
+        setImageContent(JSON.parse(savedContent));
+      }
+    }
+  };
+
+  const handleImageUpload = async () => {
     if (!newImageFile || !newImageData.title || !newImageData.eventName) {
       alert("Please fill all fields and select an image!");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageId = Date.now().toString(); // Simple ID generation
+    setUploading(true);
+    
+    try {
+      console.log("🔥 Starting Firebase upload...");
+      
+      // Create unique filename
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${newImageFile.name}`;
+      const storageRef = ref(storage, `magazine-images/${fileName}`);
+      
+      // Upload image to Firebase Storage
+      console.log("📤 Uploading to Firebase Storage...");
+      const snapshot = await uploadBytes(storageRef, newImageFile);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log("✅ Image uploaded to Firebase Storage!");
+      console.log("🔗 URL:", downloadURL);
+      
+      // Save metadata to Firestore
       const imageData = {
-        id: imageId,
         name: newImageFile.name,
-        dataUrl: e.target.result,
-        uploadedAt: new Date().toISOString()
-      };
-
-      const contentData = {
+        fileName: fileName,
+        imageUrl: downloadURL,
         title: newImageData.title,
         eventName: newImageData.eventName,
-        lines: [newImageData.line1, newImageData.line2]
+        lines: [newImageData.line1, newImageData.line2],
+        uploadedAt: new Date().toISOString()
       };
-
-      // Update state
-      const updatedImages = [...uploadedImages, imageData];
-      const updatedContent = { ...imageContent, [imageId]: contentData };
+      
+      console.log("💾 Saving metadata to Firestore...");
+      const docRef = await addDoc(collection(db, "magazine-images"), imageData);
+      console.log("✅ Saved to Firestore with ID:", docRef.id);
+      
+      // Update local state
+      const newImage = { id: docRef.id, ...imageData };
+      const updatedImages = [...uploadedImages, newImage];
+      const updatedContent = { 
+        ...imageContent, 
+        [docRef.id]: {
+          title: newImageData.title,
+          eventName: newImageData.eventName,
+          lines: [newImageData.line1, newImageData.line2]
+        }
+      };
       
       setUploadedImages(updatedImages);
       setImageContent(updatedContent);
-
-      // Save to localStorage
+      setFirebaseStatus('connected');
+      
+      // Update localStorage as backup
       localStorage.setItem('admin_uploaded_images', JSON.stringify(updatedImages));
       localStorage.setItem('admin_image_content', JSON.stringify(updatedContent));
-
-      // Trigger a custom event to notify other components
+      
+      // Trigger update event for the book
       window.dispatchEvent(new CustomEvent('admin-content-updated'));
-
+      
       // Reset form
       setNewImageFile(null);
       setNewImageData({ title: "", eventName: "", line1: "", line2: "" });
       document.getElementById('imageUpload').value = '';
+      
+      alert("🎉 SUCCESS!\n\nImage uploaded to Firebase and will appear on the LIVE WEBSITE for all users!");
+      
+    } catch (error) {
+      console.error("❌ Firebase upload failed:", error);
+      setFirebaseStatus('error');
+      
+      if (error.code === 'storage/unauthorized') {
+        alert("❌ Firebase Storage Permission Denied!\n\nPlease update your Firebase Storage rules:\n\nallow read, write: if true;");
+      } else if (error.message.includes('network') || error.message.includes('CORS') || error.code === 'storage/retry-limit-exceeded') {
+         alert("❌ Upload Blocked by CORS!\n\nThis is a Google Cloud security setting. You MUST run the 'gsutil' command in Google Cloud Console to allow uploads from localhost.");
+      } else {
+        alert("❌ Firebase upload failed:\n\n" + error.message + "\n\nFalling back to localStorage...");
+        
+        // Fallback to localStorage
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const imageId = Date.now().toString();
+          const imageData = {
+            id: imageId,
+            name: newImageFile.name,
+            dataUrl: e.target.result,
+            uploadedAt: new Date().toISOString()
+          };
 
-      alert("Image uploaded successfully! The book will update shortly.");
-    };
-    reader.readAsDataURL(newImageFile);
+          const contentData = {
+            title: newImageData.title,
+            eventName: newImageData.eventName,
+            lines: [newImageData.line1, newImageData.line2]
+          };
+
+          const updatedImages = [...uploadedImages, imageData];
+          const updatedContent = { ...imageContent, [imageId]: contentData };
+          
+          setUploadedImages(updatedImages);
+          setImageContent(updatedContent);
+
+          localStorage.setItem('admin_uploaded_images', JSON.stringify(updatedImages));
+          localStorage.setItem('admin_image_content', JSON.stringify(updatedContent));
+
+          window.dispatchEvent(new CustomEvent('admin-content-updated'));
+          
+          setNewImageFile(null);
+          setNewImageData({ title: "", eventName: "", line1: "", line2: "" });
+          document.getElementById('imageUpload').value = '';
+
+          alert("⚠️ Uploaded to localStorage only.\nFix Firebase rules for web deployment.");
+        };
+        reader.readAsDataURL(newImageFile);
+      }
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const handleDeleteImage = (imageId) => {
-    if (confirm("Are you sure you want to delete this image?")) {
+  const handleDeleteImage = async (imageId) => {
+    if (!confirm("Are you sure you want to delete this image?")) {
+      return;
+    }
+
+    try {
+      console.log("🗑️ Deleting image:", imageId);
+      
+      // Find the image to get the filename for storage deletion
+      const imageToDelete = uploadedImages.find(img => img.id === imageId);
+      
+      if (imageToDelete && imageToDelete.fileName) {
+        // Delete from Firebase Storage
+        console.log("🗑️ Deleting from Storage:", imageToDelete.fileName);
+        const storageRef = ref(storage, `magazine-images/${imageToDelete.fileName}`);
+        await deleteObject(storageRef);
+        console.log("✅ Deleted from Storage");
+      }
+
+      // Delete from Firestore
+      console.log("🗑️ Deleting from Firestore:", imageId);
+      await deleteDoc(doc(db, "magazine-images", imageId));
+      console.log("✅ Deleted from Firestore");
+
+      // Update local state
       const updatedImages = uploadedImages.filter(img => img.id !== imageId);
       const updatedContent = { ...imageContent };
       delete updatedContent[imageId];
@@ -81,29 +248,44 @@ const Admin = () => {
 
       localStorage.setItem('admin_uploaded_images', JSON.stringify(updatedImages));
       localStorage.setItem('admin_image_content', JSON.stringify(updatedContent));
+      
+      // Trigger update event
+      window.dispatchEvent(new CustomEvent('admin-content-updated'));
+      
+      alert("✅ Image deleted successfully from Firebase and local!");
+      
+    } catch (error) {
+      console.error("❌ Error deleting image:", error);
+      alert("Delete failed: " + error.message);
     }
   };
 
   const handleUpdateContent = (imageId, field, value) => {
-    const updatedContent = { ...imageContent };
-    if (field === 'line1' || field === 'line2') {
-      const lineIndex = field === 'line1' ? 0 : 1;
-      updatedContent[imageId] = {
-        ...updatedContent[imageId],
-        lines: [
-          lineIndex === 0 ? value : updatedContent[imageId].lines[0],
-          lineIndex === 1 ? value : updatedContent[imageId].lines[1]
-        ]
-      };
-    } else {
-      updatedContent[imageId] = {
-        ...updatedContent[imageId],
-        [field]: value
-      };
-    }
+    try {
+      const updatedContent = { ...imageContent };
+      if (field === 'line1' || field === 'line2') {
+        const lineIndex = field === 'line1' ? 0 : 1;
+        const currentLines = updatedContent[imageId]?.lines || ['', ''];
+        updatedContent[imageId] = {
+          ...updatedContent[imageId],
+          lines: [
+            lineIndex === 0 ? value : currentLines[0],
+            lineIndex === 1 ? value : currentLines[1]
+          ]
+        };
+      } else {
+        updatedContent[imageId] = {
+          ...updatedContent[imageId],
+          [field]: value
+        };
+      }
 
-    setImageContent(updatedContent);
-    localStorage.setItem('admin_image_content', JSON.stringify(updatedContent));
+      setImageContent(updatedContent);
+      localStorage.setItem('admin_image_content', JSON.stringify(updatedContent));
+      
+    } catch (error) {
+      console.error("❌ Error updating content:", error);
+    }
   };
 
   const exportData = () => {
@@ -131,13 +313,34 @@ const Admin = () => {
         {/* Header */}
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-white/20">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-white">Magazine Admin Panel</h1>
+            <h1 className="text-3xl font-bold text-white">
+              🔥 Firebase Magazine Admin 
+              <span className={`ml-3 px-2 py-1 rounded-full text-sm ${
+                firebaseStatus === 'connected' ? 'bg-green-600' : 
+                firebaseStatus === 'error' ? 'bg-red-600' : 'bg-yellow-600'
+              }`}>
+                {firebaseStatus === 'connected' ? '✅ Connected' : 
+                 firebaseStatus === 'error' ? '❌ Disconnected' : '🔄 Checking...'}
+              </span>
+            </h1>
             <div className="flex gap-4">
+              <button
+                onClick={testFirebaseConnection}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all duration-300"
+              >
+                🔥 Test Firebase
+              </button>
+              <button
+                onClick={loadImagesFromFirebase}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all duration-300"
+              >
+                🔄 Refresh from Firebase
+              </button>
               <button
                 onClick={exportData}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all duration-300"
               >
-                Export Data
+                📦 Export Data
               </button>
             </div>
           </div>
@@ -145,7 +348,16 @@ const Admin = () => {
 
         {/* Upload New Image Section */}
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-white/20">
-          <h2 className="text-2xl font-bold text-white mb-4">Upload New Image</h2>
+          <h2 className="text-2xl font-bold text-white mb-4">
+            🔥 Upload to Firebase Storage
+            <span className={`ml-3 px-2 py-1 rounded text-sm ${
+              firebaseStatus === 'connected' ? 'bg-green-600/20 text-green-400' : 
+              firebaseStatus === 'error' ? 'bg-red-600/20 text-red-400' : 'bg-yellow-600/20 text-yellow-400'
+            }`}>
+              {firebaseStatus === 'connected' ? 'Ready for Web Upload' : 
+               firebaseStatus === 'error' ? 'Check Firebase Rules' : 'Testing Connection...'}
+            </span>
+          </h2>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label className="block text-white text-sm font-semibold mb-2">Select Image</label>
@@ -155,7 +367,11 @@ const Admin = () => {
                 accept="image/*"
                 onChange={(e) => setNewImageFile(e.target.files[0])}
                 className="w-full px-3 py-2 rounded-lg bg-white/20 text-white border border-white/30 focus:outline-none focus:border-white/60"
+                disabled={uploading}
               />
+              {newImageFile && (
+                <p className="text-green-400 text-sm mt-1">✅ Selected: {newImageFile.name}</p>
+              )}
             </div>
             <div className="space-y-3">
               <div>
@@ -196,13 +412,19 @@ const Admin = () => {
                   onChange={(e) => setNewImageData({...newImageData, line2: e.target.value})}
                   placeholder="Second description line"
                   className="w-full px-3 py-2 rounded-lg bg-white/20 text-white placeholder-gray-300 border border-white/30 focus:outline-none focus:border-white/60"
+                  disabled={uploading}
                 />
               </div>
               <button
                 onClick={handleImageUpload}
-                className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold rounded-lg transition-all duration-300"
+                disabled={uploading}
+                className={`w-full py-3 font-bold rounded-lg transition-all duration-300 ${
+                  uploading 
+                    ? 'bg-gray-600 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700'
+                } text-white`}
               >
-                Upload Image
+                {uploading ? "🔄 Uploading to Firebase..." : "🔥 Upload to Firebase (Live Web)"}
               </button>
             </div>
           </div>
@@ -222,12 +444,14 @@ const Admin = () => {
                     {/* Image Preview */}
                     <div className="flex flex-col items-center">
                       <img
-                        src={image.dataUrl}
+                        src={image.imageUrl || image.dataUrl}
                         alt={image.name}
                         className="w-full max-w-xs h-48 object-cover rounded-lg border-2 border-white/20"
                       />
                       <p className="text-white/60 text-sm mt-2">{image.name}</p>
                       <p className="text-white/40 text-xs">ID: {image.id}</p>
+                      {image.imageUrl && <p className="text-green-400 text-xs">✅ In Firebase</p>}
+                      {image.dataUrl && !image.imageUrl && <p className="text-yellow-400 text-xs">⚠ Local only</p>}
                     </div>
 
                     {/* Content Management */}

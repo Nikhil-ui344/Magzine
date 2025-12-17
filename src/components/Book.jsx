@@ -2,7 +2,7 @@ import { useCursor, useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useAtom } from "jotai";
 import { easing } from "maath";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Component } from "react";
 import {
   Bone,
   BoxGeometry,
@@ -18,49 +18,41 @@ import {
 } from "three";
 import { degToRad } from "three/src/math/MathUtils.js";
 import { pageAtom, selectedPageAtom, currentViewAtom } from "./UI";
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import { fallbackImage } from '../utils/fallbackImage';
 
-// Helper function to get dynamic pages - now returns fresh data each time
-const getDynamicPages = () => {
-  // Get base pictures
-  const basePictures = [
-    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19","20"
-  ];
-  
-  // Get admin images
-  const adminImages = localStorage.getItem('admin_uploaded_images');
-  const pictures = adminImages ? [...basePictures, ...JSON.parse(adminImages).map(img => img.id)] : basePictures;
-  
-  // Generate pages
-  const generatedPages = [
-    {
-      front: "book-cover",
-      back: "book-back",
-    },
-  ];
+// Base pictures - these will ALWAYS load from your local textures folder
+const basePictures = [
+  "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"
+];
 
-  for (let i = 1; i < pictures.length - 1; i += 2) {
-    if (i + 1 < pictures.length) {
-      generatedPages.push({
-        front: pictures[i],
-        back: pictures[i + 1],
-      });
+// Error Boundary for Texture Loading
+class TextureErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Texture loading error caught:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // Render a fallback page (simple white page)
+      return this.props.fallback;
     }
+
+    return this.props.children;
   }
+}
 
-  if (pictures.length % 2 === 0) {
-    generatedPages.push({
-      front: pictures[pictures.length - 1],
-      back: "book-back",
-    });
-  }
 
-  generatedPages.push({
-    front: "book-back",
-    back: "book-back",
-  });
-
-  return generatedPages;
-};
 
 // Helper function to check if a texture exists
 const checkTextureExists = (url) => {
@@ -157,29 +149,244 @@ const pageMaterials = [
 ];
 
 // Helper function to get the correct texture path for preloading
-const getPreloadTexturePath = (imageName) => {
-  // Special cases for images that might have different extensions
-  // For now, we'll assume all new images use .jpg extension
-  // If you have specific images with .jpeg extension, add them here
-  return `/textures/${imageName}.jpg`;
+const getPreloadTexturePath = (imageName, firebaseImages) => {
+  if (!imageName) return fallbackImage;
+  if (imageName === "book-cover") return "/textures/book-cover.png";
+  if (imageName === "book-back") return "/textures/book-back.jpg";
+
+  // Check if it's a local base picture
+  if (basePictures.includes(imageName)) {
+    return `/textures/${imageName}.jpg`;
+  }
+
+  // Check if it's an admin uploaded image (Firebase) - Check props first
+  if (firebaseImages) {
+    const adminImage = firebaseImages.find(img => img.id === imageName);
+    if (adminImage) {
+      if (adminImage.imageUrl) return adminImage.imageUrl;
+      if (adminImage.dataUrl) return adminImage.dataUrl;
+    }
+  }
+
+  // Fallback to localStorage
+  const adminImages = localStorage.getItem('admin_uploaded_images');
+  if (adminImages) {
+    try {
+      const parsedImages = JSON.parse(adminImages);
+      const adminImage = parsedImages.find(img => img && img.id === imageName);
+      if (adminImage) {
+        if (adminImage.imageUrl) return adminImage.imageUrl;
+        if (adminImage.dataUrl) return adminImage.dataUrl;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // If we still haven't found it, and it's not a base picture, return fallback
+  // This prevents 404s on new images that haven't loaded yet
+  return fallbackImage;
 };
 
-const Page = ({ number, front, back, page, opened, bookClosed, totalPages, ...props }) => {
+// Fallback Page Component that doesn't use textures
+const FallbackPage = ({ number, page, opened, bookClosed, totalPages, ...props }) => {
+  const group = useRef();
+  const turnedAt = useRef(0);
+  const lastOpened = useRef(opened);
+  const skinnedMeshRef = useRef();
+
+  const manualSkinnedMesh = useMemo(() => {
+    const bones = [];
+    for (let i = 0; i <= PAGE_SEGMENTS; i++) {
+      let bone = new Bone();
+      bones.push(bone);
+      if (i === 0) {
+        bone.position.x = 0;
+      } else {
+        bone.position.x = SEGMENT_WIDTH;
+      }
+      if (i > 0) {
+        bones[i - 1].add(bone);
+      }
+    }
+    const skeleton = new Skeleton(bones);
+
+    const materials = [
+      ...pageMaterials,
+      new MeshStandardMaterial({
+        color: "#663399", // Purple fallback color
+        roughness: 0.1,
+        metalness: 0,
+        emissive: emissiveColor,
+        emissiveIntensity: 0,
+      }),
+      new MeshStandardMaterial({
+        color: "#663399", // Purple fallback color
+        roughness: 0.1,
+        metalness: 0,
+        emissive: emissiveColor,
+        emissiveIntensity: 0,
+      }),
+    ];
+    const mesh = new SkinnedMesh(pageGeometry, materials);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    mesh.add(skeleton.bones[0]);
+    mesh.bind(skeleton);
+    return mesh;
+  }, []);
+
+  useFrame((_, delta) => {
+    if (!skinnedMeshRef.current) {
+      return;
+    }
+
+    const emissiveIntensity = highlighted ? 0.22 : 0;
+    skinnedMeshRef.current.material[4].emissiveIntensity =
+      skinnedMeshRef.current.material[5].emissiveIntensity = MathUtils.lerp(
+        skinnedMeshRef.current.material[4].emissiveIntensity,
+        emissiveIntensity,
+        0.1
+      );
+
+    if (lastOpened.current !== opened) {
+      turnedAt.current = +new Date();
+      lastOpened.current = opened;
+    }
+    let turningTime = Math.min(400, new Date() - turnedAt.current) / 400;
+    turningTime = Math.sin(turningTime * Math.PI);
+
+    let targetRotation = opened ? -Math.PI / 2 : Math.PI / 2;
+    if (!bookClosed) {
+      targetRotation += degToRad(number * 0.8);
+    }
+
+    const bones = skinnedMeshRef.current.skeleton.bones;
+    for (let i = 0; i < bones.length; i++) {
+      const target = i === 0 ? group.current : bones[i];
+
+      const insideCurveIntensity = i < 8 ? Math.sin(i * 0.2 + 0.25) : 0;
+      const outsideCurveIntensity = i >= 8 ? Math.cos(i * 0.3 + 0.09) : 0;
+      const turningIntensity =
+        Math.sin(i * Math.PI * (1 / bones.length)) * turningTime;
+      let rotationAngle =
+        insideCurveStrength * insideCurveIntensity * targetRotation -
+        outsideCurveStrength * outsideCurveIntensity * targetRotation +
+        turningCurveStrength * turningIntensity * targetRotation;
+      let foldRotationAngle = degToRad(Math.sign(targetRotation) * 2);
+      if (bookClosed) {
+        if (i === 0) {
+          rotationAngle = targetRotation;
+          foldRotationAngle = 0;
+        } else {
+          rotationAngle = 0;
+          foldRotationAngle = 0;
+        }
+      }
+      easing.dampAngle(
+        target.rotation,
+        "y",
+        rotationAngle,
+        easingFactor,
+        delta
+      );
+
+      const foldIntensity =
+        i > 8
+          ? Math.sin(i * Math.PI * (1 / bones.length) - 0.5) * turningTime
+          : 0;
+      easing.dampAngle(
+        target.rotation,
+        "x",
+        foldRotationAngle * foldIntensity,
+        easingFactorFold,
+        delta
+      );
+    }
+  });
+
+  const [_, setPage] = useAtom(pageAtom);
+  const [highlighted, setHighlighted] = useState(false);
+  useCursor(highlighted);
+
+  const handlePageClick = (e) => {
+    e.stopPropagation();
+    if (opened) {
+      setPage(page - 1);
+    } else {
+      setPage(page + 1);
+    }
+  };
+
+  return (
+    <group
+      {...props}
+      ref={group}
+      onPointerEnter={(e) => {
+        e.stopPropagation();
+        setHighlighted(true);
+      }}
+      onPointerLeave={(e) => {
+        e.stopPropagation();
+        setHighlighted(false);
+      }}
+      onClick={handlePageClick}
+    >
+      <primitive
+        object={manualSkinnedMesh}
+        ref={skinnedMeshRef}
+        position-z={-number * PAGE_DEPTH + page * PAGE_DEPTH}
+      />
+    </group>
+  );
+};
+
+const Page = ({ number, front, back, page, opened, bookClosed, totalPages, firebaseImages, ...props }) => {
   // Load textures - for covers use book-cover.png, for inner pages use their textures
   // Handle different image extensions (.jpg vs .jpeg) and admin uploaded images
   const getTexturePath = (imageName) => {
-    // Check if it's an admin uploaded image
-    const adminImages = localStorage.getItem('admin_uploaded_images');
-    if (adminImages) {
-      const parsedImages = JSON.parse(adminImages);
-      const adminImage = parsedImages.find(img => img.id === imageName);
+    if (!imageName) {
+      return fallbackImage; // Fallback to first image if undefined
+    }
+    if (imageName === "book-cover") return "/textures/book-cover.png";
+    if (imageName === "book-back") return "/textures/book-back.jpg";
+    
+    // Check if it's a local base picture
+    if (basePictures.includes(imageName)) {
+      return `/textures/${imageName}.jpg`;
+    }
+
+    // Check firebase images prop first (Real-time)
+    if (firebaseImages) {
+      const adminImage = firebaseImages.find(img => img.id === imageName);
       if (adminImage) {
-        return adminImage.dataUrl; // Use the base64 data URL for admin images
+        if (adminImage.imageUrl) return adminImage.imageUrl;
+        if (adminImage.dataUrl) return adminImage.dataUrl;
       }
     }
     
-    // Default to regular texture path
-    return `/textures/${imageName}.jpg`;
+    // Check if it's an admin uploaded image (Firebase) - Fallback to localStorage
+    const adminImages = localStorage.getItem('admin_uploaded_images');
+    if (adminImages) {
+      try {
+        const parsedImages = JSON.parse(adminImages);
+        const adminImage = parsedImages.find(img => img && img.id === imageName);
+        if (adminImage) {
+          // Prefer Firebase URL over local dataUrl
+          if (adminImage.imageUrl) {
+            return adminImage.imageUrl; // Firebase Storage URL
+          } else if (adminImage.dataUrl) {
+            return adminImage.dataUrl; // Local base64 backup
+          }
+        }
+      } catch (e) {
+        console.warn('Error parsing admin images:', e);
+      }
+    }
+    
+    // If not found in any list, return fallback instead of broken link
+    return fallbackImage;
   };
 
   const textures = (number === 0 || number === totalPages - 1) ? [
@@ -242,7 +449,15 @@ const Page = ({ number, front, back, page, opened, bookClosed, totalPages, ...pr
     return mesh;
   }, []);
 
-  // useHelper(skinnedMeshRef, SkeletonHelper, "red");
+  // Update materials when textures change
+  useEffect(() => {
+    if (skinnedMeshRef.current) {
+      skinnedMeshRef.current.material[4].map = picture;
+      skinnedMeshRef.current.material[5].map = picture2;
+      skinnedMeshRef.current.material[4].needsUpdate = true;
+      skinnedMeshRef.current.material[5].needsUpdate = true;
+    }
+  }, [picture, picture2]);
 
   useFrame((_, delta) => {
     if (!skinnedMeshRef.current) {
@@ -384,48 +599,53 @@ const Page = ({ number, front, back, page, opened, bookClosed, totalPages, ...pr
 export const Book = ({ ...props }) => {
   const [page] = useAtom(pageAtom);
   const [delayedPage, setDelayedPage] = useState(page);
-  const [pages, setPages] = useState(getDynamicPages());
+  const [pages, setPages] = useState([]);
+  const [firebaseImages, setFirebaseImages] = useState([]);
 
-  // Update pages when admin content changes
+  // 1. Fetch images from Firestore (Real-time) - Matches UI.jsx logic
   useEffect(() => {
-    const updatePages = () => {
-      const newPages = getDynamicPages();
-      setPages(newPages);
+    const q = query(collection(db, "magazine-images"), orderBy("uploadedAt", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const images = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setFirebaseImages(images);
       
-      // Preload textures for the new pages
-      newPages.forEach((pageData) => {
-        useTexture.preload(getPreloadTexturePath(pageData.front));
-        useTexture.preload(getPreloadTexturePath(pageData.back));
-      });
-    };
-
-    // Update pages on mount
-    updatePages();
-
-    // Listen for storage changes (when admin uploads new images)
-    const handleStorageChange = (e) => {
-      if (e.key === 'admin_uploaded_images' || e.key === 'admin_image_content') {
-        updatePages();
-      }
-    };
-
-    // Listen for custom admin events
-    const handleAdminUpdate = () => {
-      updatePages();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('admin-content-updated', handleAdminUpdate);
-    
-    // Also check for changes periodically (for same-tab updates)
-    const interval = setInterval(updatePages, 3000);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('admin-content-updated', handleAdminUpdate);
-      clearInterval(interval);
-    };
+      // Update localStorage for other components if needed, but Book relies on state now
+      localStorage.setItem('admin_uploaded_images', JSON.stringify(images));
+    });
+    return () => unsubscribe();
   }, []);
+
+  // 2. Generate Pages - Matches UI.jsx logic exactly
+  useEffect(() => {
+    // basePictures is now defined at top level
+    
+    const allPictureIds = [...basePictures, ...firebaseImages.map(img => img.id)];
+    
+    const generatedPages = [
+      { front: "book-cover", back: "book-back" },
+    ];
+
+    // Loop through ALL images starting from 0
+    for (let i = 0; i < allPictureIds.length; i += 2) {
+      const front = allPictureIds[i];
+      const back = (i + 1 < allPictureIds.length) ? allPictureIds[i + 1] : "book-back";
+      
+      generatedPages.push({ front, back });
+    }
+
+    generatedPages.push({ front: "book-back", back: "book-back" });
+    setPages(generatedPages);
+
+    // Preload textures for the new pages
+    generatedPages.forEach((pageData) => {
+      useTexture.preload(getPreloadTexturePath(pageData.front, firebaseImages));
+      useTexture.preload(getPreloadTexturePath(pageData.back, firebaseImages));
+    });
+
+  }, [firebaseImages]);
 
   useEffect(() => {
     let timeout;
@@ -458,16 +678,32 @@ export const Book = ({ ...props }) => {
   return (
     <group {...props} rotation-y={-Math.PI / 2}>
       {[...pages].map((pageData, index) => (
-        <Page
-          key={index}
-          page={delayedPage}
-          number={index}
-          totalPages={pages.length}
-          opened={delayedPage > index}
-          bookClosed={delayedPage === 0 || delayedPage === pages.length}
-          {...pageData}
-        />
+        <TextureErrorBoundary 
+          key={index} 
+          fallback={
+            <FallbackPage
+              page={delayedPage}
+              number={index}
+              totalPages={pages.length}
+              opened={delayedPage > index}
+              bookClosed={delayedPage === 0 || delayedPage === pages.length}
+              {...pageData}
+            />
+          }
+        >
+          <Page
+            page={delayedPage}
+            number={index}
+            totalPages={pages.length}
+            opened={delayedPage > index}
+            bookClosed={delayedPage === 0 || delayedPage === pages.length}
+            firebaseImages={firebaseImages}
+            {...pageData}
+          />
+        </TextureErrorBoundary>
       ))}
     </group>
   );
 };
+
+export { TextureErrorBoundary };

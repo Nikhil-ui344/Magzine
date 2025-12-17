@@ -1,21 +1,13 @@
 import { atom, useAtom } from "jotai";
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { db } from "../firebase";
 
-// Base pictures - can be extended dynamically via admin
+// Base pictures - these will ALWAYS load from your local textures folder
 const basePictures = [
-"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19","20"
+  "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"
 ];
-
-// Dynamic pictures loading function
-const getDynamicPictures = () => {
-  const adminImages = localStorage.getItem('admin_uploaded_images');
-  if (adminImages) {
-    const parsedImages = JSON.parse(adminImages);
-    return [...basePictures, ...parsedImages.map(img => img.id)];
-  }
-  return basePictures;
-};
 
 export const pageAtom = atom(0);
 export const selectedPageAtom = atom(null);
@@ -23,64 +15,11 @@ export const currentViewAtom = atom("home");
 export const isLoggedInAtom = atom(false);
 export const userInfoAtom = atom({ name: "", usn: "", branch: "" });
 export const hasDownloadedTicketAtom = atom(false);
-// Dynamic pages generation function
-const generatePages = () => {
-  const pictures = getDynamicPictures();
-  const generatedPages = [
-    {
-      front: "book-cover",
-      back: "book-back", // Standard cover
-    },
-  ];
 
-  // Create pages with images on both front and back using a dynamic loop
-  for (let i = 1; i < pictures.length - 1; i += 2) {
-    if (i + 1 < pictures.length) {
-      generatedPages.push({
-        front: pictures[i],   // Right side
-        back: pictures[i + 1], // Left side
-      });
-    }
-  }
 
-  // Handle the last image if there's an odd number of images
-  if (pictures.length % 2 === 0) {
-    // If even number of images, last image goes on front with book-back on back
-    generatedPages.push({
-      front: pictures[pictures.length - 1],
-      back: "book-back",
-    });
-  }
 
-  // Final back cover page
-  generatedPages.push({
-    front: "book-back",
-    back: "book-back",
-  });
 
-  return generatedPages;
-};
 
-// Dynamic content loading function
-const getDynamicContent = () => {
-  const adminContent = localStorage.getItem('admin_image_content');
-  if (adminContent) {
-    return JSON.parse(adminContent);
-  }
-  return {};
-};
-
-// Dynamic page content function that merges static and dynamic content
-const getPageContent = (pageId) => {
-  // First check for dynamic content from admin
-  const dynamicContent = getDynamicContent();
-  if (dynamicContent[pageId]) {
-    return dynamicContent[pageId];
-  }
-  
-  // Fall back to static content
-  return pageContentMap[pageId] ?? defaultPageContent;
-};
 
 const defaultPageContent = {
   title: "Captured Moments",
@@ -288,45 +227,55 @@ export const UI = () => {
   const [isLoggedIn, setIsLoggedIn] = useAtom(isLoggedInAtom);
   const [userInfo, setUserInfo] = useAtom(userInfoAtom);
   const [hasDownloadedTicket, setHasDownloadedTicket] = useAtom(hasDownloadedTicketAtom);
+  const [firebaseImages, setFirebaseImages] = useState([]);
   
   // Login form state
   const [loginName, setLoginName] = useState("");
   const [loginUSN, setLoginUSN] = useState("");
   const [loginBranch, setLoginBranch] = useState("");
 
-  // Load dynamic pages on component mount and when admin content changes
+  // 1. Fetch images from Firestore (Real-time)
   useEffect(() => {
-    const loadPages = () => {
-      const dynamicPages = generatePages();
-      setPages(dynamicPages);
-    };
-    
-    loadPages();
-    
-    // Listen for storage changes (when admin adds new content)
-    const handleStorageChange = (e) => {
-      if (e.key === 'admin_uploaded_images' || e.key === 'admin_image_content') {
-        loadPages();
-      }
-    };
-
-    // Listen for custom admin events
-    const handleAdminUpdate = () => {
-      loadPages();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('admin-content-updated', handleAdminUpdate);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('admin-content-updated', handleAdminUpdate);
-    };
+    const q = query(collection(db, "magazine-images"), orderBy("uploadedAt", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const images = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setFirebaseImages(images);
+    });
+    return () => unsubscribe();
   }, []);
+
+  // 2. Generate Pages - FIXED LOGIC to prevent gaps
+  useEffect(() => {
+    // Combine local base pictures with dynamic firebase images
+    const allPictureIds = [...basePictures, ...firebaseImages.map(img => img.id)];
+    
+    const generatedPages = [
+      { front: "book-cover", back: "book-back" },
+    ];
+
+    // Loop through ALL images starting from 0
+    // This ensures Image 1 is Front, Image 2 is Back, Image 3 is Front, etc.
+    for (let i = 0; i < allPictureIds.length; i += 2) {
+      const front = allPictureIds[i];
+      // If there is a next image, use it for back. If not, use book-back.
+      const back = (i + 1 < allPictureIds.length) ? allPictureIds[i + 1] : "book-back";
+      
+      generatedPages.push({ front, back });
+    }
+
+    generatedPages.push({ front: "book-back", back: "book-back" });
+    setPages(generatedPages);
+  }, [firebaseImages]);
 
   useEffect(() => {
     const audio = new Audio("/audios/page-flip-01a.mp3");
-    audio.play();
+    audio.play().catch(error => {
+      // Ignore autoplay restriction errors
+      console.log("Audio autoplay prevented:", error.message);
+    });
   }, [page]);
 
   const closePageView = () => {
@@ -487,6 +436,47 @@ export const UI = () => {
     localStorage.setItem('anexsa_ticket_downloaded', 'true');
   };
 
+  // Helper to get image source
+  const getImageSource = (pageId) => {
+    if (!pageId) return "";
+    if (pageId === "book-cover") {
+      return "/textures/book-cover.png";
+    }
+    if (pageId === "book-back") {
+      return "/textures/book-back.jpg";
+    }
+    
+    // Check if it's a local base picture
+    if (basePictures.includes(pageId)) {
+      return `/textures/${pageId}.jpg`;
+    }
+    
+    // Check if it's a firebase image
+    const firebaseImg = firebaseImages.find(img => img.id === pageId);
+    if (firebaseImg) {
+      return firebaseImg.imageUrl;
+    }
+    
+    // Fallback
+    return `/textures/${pageId}.jpg`;
+  };
+
+  // Helper to get page content
+  const getPageContent = (pageId) => {
+    // Check if it's a firebase image with content
+    const firebaseImg = firebaseImages.find(img => img.id === pageId);
+    if (firebaseImg) {
+      return {
+        title: firebaseImg.title || "Captured Moment",
+        eventName: firebaseImg.eventName || "Freshers Day 2025",
+        lines: firebaseImg.description ? [firebaseImg.description] : ["A special moment from the event."]
+      };
+    }
+    
+    // Fall back to static content
+    return pageContentMap[pageId] ?? defaultPageContent;
+  };
+
   const detailContent =
     selectedPage !== null ? getPageContent(selectedPage) : defaultPageContent;
   const pageNumber =
@@ -609,7 +599,7 @@ export const UI = () => {
                   <div className="relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-blue-500/20 blur-xl sm:blur-2xl md:blur-3xl"></div>
                     <img
-                      src={`/textures/${selectedPage}.jpg`}
+                      src={getImageSource(selectedPage)}
                       alt={`Page ${selectedPage}`}
                       className="relative w-full h-auto max-h-[50vh] sm:max-h-[60vh] md:max-h-[70vh] lg:max-h-[80vh] object-contain rounded-lg sm:rounded-xl md:rounded-2xl shadow-xl sm:shadow-2xl border-2 sm:border-4 border-white/20 backdrop-blur-sm"
                     />
@@ -714,7 +704,7 @@ export const UI = () => {
                 <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-13xl font-bold">
                   Welcome to anexsa
                 </h2>
-                <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold outline-text italic">
+                <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold italic outline-text">
                   Get Ready for Freshers Day
                 </h2>
               </div>
@@ -740,7 +730,7 @@ export const UI = () => {
                 <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-13xl font-bold">
                   Get Ready for Freshers Day
                 </h2>
-                <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold outline-text italic">
+                <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold italic outline-text">
                   Welcome to anexsa
                 </h2>
               </div>
@@ -913,7 +903,7 @@ export const UI = () => {
             <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-13xl font-bold">
               Get Ready for Freshers Day
             </h2>
-            <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold outline-text italic">
+            <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold italic outline-text">
               Welcome to ANEXSA
             </h2>
           </div>
@@ -939,7 +929,7 @@ export const UI = () => {
             <h2 className="shrink-0 text-white text-4xl md:text-6xl lg:text-13xl font-bold">
               Get Ready for Freshers Day
             </h2>
-            <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold outline-text italic">
+            <h2 className="shrink-0 text-transparent text-4xl md:text-6xl lg:text-13xl font-bold italic outline-text">
               Get Ready for Freshers Day
             </h2>
           </div>
@@ -951,3 +941,5 @@ export const UI = () => {
     </>
   );
 };
+
+
