@@ -1,16 +1,15 @@
 import { Environment, Float, OrbitControls } from "@react-three/drei";
 import { useAtom } from "jotai";
 import { Book } from "./Book";
-import { currentViewAtom, isLoggedInAtom } from "./UI";
+import { currentViewAtom } from "./UI";
 
 export const Experience = () => {
   const [currentView] = useAtom(currentViewAtom);
-  const [isLoggedIn] = useAtom(isLoggedInAtom);
 
   return (
     <>
-      {/* Only show book when logged in and on home page */}
-      {isLoggedIn && currentView === 'home' && (
+      {/* Only show book on home page */}
+      {currentView === 'home' && (
         <>
           <Float
             rotation-x={-Math.PI / 4}
